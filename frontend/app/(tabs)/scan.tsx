@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, Image, ScrollView, Alert } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as ImagePicker from 'expo-image-picker'; // Added import
 import { useRouter } from 'expo-router';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import Animated, { FadeInDown } from 'react-native-reanimated';
@@ -34,52 +35,86 @@ export default function ScanScreen() {
         );
     }
 
-    const takePictureAndAnalyze = async () => {
-        if (!cameraRef.current) return;
-
+    const analyzePhoto = async (base64: string, uri: string) => {
         setAnalyzing(true);
+        setCapturedImage(uri);
         try {
-            const photo = await cameraRef.current.takePictureAsync({ base64: true, quality: 0.3 });
-            if (photo?.base64) {
-                setCapturedImage(photo.uri);
+            console.log("Starting analysis...");
+            const locationPromise = getCurrentLocation();
+            const visualAnalysisPromise = analyzeImage(base64);
 
-                const locationPromise = getCurrentLocation();
-                const visualAnalysisPromise = analyzeImage(photo.base64);
+            const [coords, visualResult] = await Promise.all([locationPromise, visualAnalysisPromise]);
+            console.log("Analysis Result:", visualResult);
 
-                const [coords, visualResult] = await Promise.all([locationPromise, visualAnalysisPromise]);
+            if (visualResult.aqi === -1) {
+                Alert.alert("Analysis Failed", visualResult.description || "Unknown error");
+                setResult(null);
+                setCapturedImage(null);
+                setAnalyzing(false);
+                return;
+            }
 
-                // Mock Satellite if GEE not set up
-                let satelliteResult = null;
-                if (coords) {
-                    // satelliteResult = await fetchSatelliteAQI(coords.latitude, coords.longitude);
-                }
+            // Mock Satellite if GEE not set up
+            let satelliteResult = null;
+            if (coords) {
+                // satelliteResult = await fetchSatelliteAQI(coords.latitude, coords.longitude);
+            }
 
-                const scanData = {
-                    visual: visualResult,
-                    satellite: satelliteResult,
-                    location: coords,
-                    weather: { hum: 45, wind: 12, temp: 24 },
-                    components: { pm10: visualResult.aqi * 1.2, no2: 15, so2: 5 }
-                };
+            const scanData = {
+                visual: visualResult,
+                satellite: null,
+                location: coords,
+                weather: { hum: 45, wind: 12, temp: 24 },
+                components: { pm10: visualResult.aqi * 1.2, no2: 15, so2: 5 }
+            };
 
-                setResult(scanData);
+            setResult(scanData);
 
-                // Save to Backend
-                // Assume generic User ID 1 for now
+            // Save to Backend with better error handling
+            try {
                 await saveScan({
                     userId: 1,
                     aqi: visualResult.aqi,
                     location: coords || {},
                     ai_analysis: scanData
                 });
+            } catch (saveError) {
+                console.error("Backend Save Error:", saveError);
+                // Don't block UI if save fails
             }
-        } catch (error) {
+
+        } catch (error: any) {
             console.error("Analysis failed:", error);
-            Alert.alert("Error", "Could not analyze image.");
+            Alert.alert("Error", error.message || "Could not analyze image.");
             setResult(null);
             setCapturedImage(null);
         } finally {
             setAnalyzing(false);
+        }
+    }
+
+    const takePictureAndAnalyze = async () => {
+        if (!cameraRef.current) return;
+        console.log("Taking picture...");
+        try {
+            const photo = await cameraRef.current.takePictureAsync({ base64: true, quality: 0.3 });
+            if (photo?.base64 && photo?.uri) {
+                await analyzePhoto(photo.base64, photo.uri);
+            }
+        } catch (e: any) {
+            Alert.alert("Camera Error", e.message);
+        }
+    };
+
+    const pickImage = async () => {
+        const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            base64: true,
+            quality: 0.5,
+        });
+
+        if (!result.canceled && result.assets[0].base64) {
+            await analyzePhoto(result.assets[0].base64, result.assets[0].uri);
         }
     };
 
@@ -104,12 +139,18 @@ export default function ScanScreen() {
                         </View>
 
                         <View style={styles.controls}>
+                            <TouchableOpacity onPress={pickImage} style={styles.galleryBtn}>
+                                <Ionicons name="images" size={24} color="#FFF" />
+                            </TouchableOpacity>
+
                             <TouchableOpacity
                                 style={styles.shutterBtn}
                                 onPress={takePictureAndAnalyze}
                             >
                                 <View style={styles.shutterInner} />
                             </TouchableOpacity>
+
+                            <View style={{ width: 40 }} />
                         </View>
                     </SafeAreaView>
                     {analyzing && <ScanningOverlay isScanning={analyzing} />}
@@ -190,8 +231,16 @@ const styles = StyleSheet.create({
     headerBadge: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 },
     headerText: { color: '#FFF', fontWeight: '600' },
 
-    controls: { alignItems: 'center' },
-    shutterBtn: { width: 80, height: 80, borderRadius: 40, borderWidth: 4, borderColor: 'rgba(255,255,255,0.3)', justifyContent: 'center', alignItems: 'center' },
+    controls: { flexDirection: 'row', alignItems: 'center', gap: 40, marginBottom: 20 },
+    galleryBtn: { width: 50, height: 50, borderRadius: 25, backgroundColor: 'rgba(255,255,255,0.2)', justifyContent: 'center', alignItems: 'center' },
+    shutterBtn: {
+        width: 80,
+        height: 80,
+        borderRadius: 40,
+        backgroundColor: 'rgba(255,255,255,0.3)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
     shutterInner: { width: 64, height: 64, borderRadius: 32, backgroundColor: '#FFF' },
 
     resultContainer: { flex: 1 },

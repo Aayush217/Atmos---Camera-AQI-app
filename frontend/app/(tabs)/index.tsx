@@ -6,9 +6,38 @@ import { COLORS, SPACING, RADIUS } from '@/constants/theme';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
+import { getUserProfile } from '@/services/api';
+import { useFocusEffect } from 'expo-router';
+import { Alert, TouchableOpacity } from 'react-native';
+
 export default function Dashboard() {
-  // Mock Data - In real app, fetch from Backend
-  const userName = "User";
+  const [user, setUser] = React.useState<any>(null);
+  const [greeting, setGreeting] = React.useState("Good Morning");
+
+  // Refresh user data when tab is focused
+  useFocusEffect(
+    React.useCallback(() => {
+      getUserProfile().then(data => {
+        if (data) setUser(data);
+      });
+
+      const hour = new Date().getHours();
+      if (hour < 12) setGreeting("Good Morning");
+      else if (hour < 18) setGreeting("Good Afternoon");
+      else setGreeting("Good Evening");
+    }, [])
+  );
+
+  const showProfile = () => {
+    if (!user) return;
+    Alert.alert(
+      "User Profile",
+      `Name: ${user.name}\nAge: ${user.age}\nConditions: ${user.conditions?.join(', ') || 'None'}\nSensitivity: ${user.sensitivity_level}`
+    );
+  };
+
+  // Mock Data for now if no user
+  const userName = user?.name || "User";
   const currentAQI = 42;
   const aqiStatus = "Good";
 
@@ -27,12 +56,12 @@ export default function Dashboard() {
         {/* Header */}
         <Animated.View entering={FadeInDown.delay(200)} style={styles.header}>
           <View>
-            <Text style={styles.greeting}>Good Morning,</Text>
+            <Text style={styles.greeting}>{greeting},</Text>
             <Text style={styles.username}>{userName}</Text>
           </View>
-          <View style={styles.avatar}>
+          <TouchableOpacity onPress={showProfile} style={styles.avatar} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
             <Ionicons name="person" size={20} color="#FFF" />
-          </View>
+          </TouchableOpacity>
         </Animated.View>
 
         {/* AQI Highlught */}
@@ -123,6 +152,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.2)',
     justifyContent: 'center',
     alignItems: 'center',
+    zIndex: 10, // Ensure it's on top
   },
   aqiCard: {
     padding: SPACING.l,

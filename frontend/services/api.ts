@@ -31,3 +31,14 @@ export const saveScan = async (data: { userId: number, aqi: number, location: an
         return null;
     }
 };
+
+export const getUserProfile = async () => {
+    try {
+        const response = await fetch(`${BASE_URL}/user`);
+        if (!response.ok) return null;
+        return await response.json();
+    } catch (error) {
+        console.error("API Error (getUserProfile):", error);
+        return null;
+    }
+};
