@@ -16,12 +16,12 @@ export const analyzeImage = async (base64Image: string) => {
     }
 
     try {
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" }); // Faster model
         const prompt = "Analyze this image of the horizon/sky. Estimate the PM2.5 level based on visual haze. Return a JSON object with keys: 'aqi' (number), 'description' (short string), 'recommendation' (short safety tip), and 'color' (hex code representing severity, e.g., green, yellow, orange, red).";
 
         // Timeout promise
         const timeoutPromise = new Promise((_, reject) =>
-            setTimeout(() => reject(new Error("Gemini API timeout")), 10000)
+            setTimeout(() => reject(new Error("Gemini API timeout")), 25000) // Increased to 25s
         );
 
         const result: any = await Promise.race([
