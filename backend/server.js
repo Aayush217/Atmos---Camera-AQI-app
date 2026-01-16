@@ -135,7 +135,8 @@ app.post('/api/analyze', async (req, res) => {
         // 3. Call Python Service for Advice
         let advice = "Could not generate advice.";
         try {
-            const adviceResponse = await axios.post('http://localhost:5000/predict', {
+            const pythonUrl = process.env.PYTHON_SERVICE_URL || 'http://localhost:5000';
+            const adviceResponse = await axios.post(`${pythonUrl}/predict`, {
                 aqi: currentAQI,
                 age: userAge,
                 disease: userDisease
