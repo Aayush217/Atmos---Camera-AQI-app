@@ -17,7 +17,7 @@ export default function WelcomeScreen() {
         <View style={styles.container}>
             <StatusBar barStyle="light-content" />
             <LinearGradient
-                colors={['#4facfe', '#00f2fe']} // Placeholder nice gradient
+                colors={['#4facfe', '#00f2fe']} 
                 style={styles.background}
             />
 

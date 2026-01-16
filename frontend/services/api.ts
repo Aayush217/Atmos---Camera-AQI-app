@@ -1,4 +1,4 @@
-const API_URL = 'http://10.98.175.43:3000/api';
+const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://10.98.175.43:3000/api';
 
 export const createUserProfile = async (data: { name: string, age: number, conditions: string[], sensitivity_level: string }) => {
     try {
