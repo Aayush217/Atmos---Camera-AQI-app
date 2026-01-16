@@ -34,7 +34,11 @@ export default function HealthInputScreen() {
         }
     };
 
+    const [loading, setLoading] = useState(false);
+
     const handleContinue = async () => {
+        if (loading) return;
+        setLoading(true);
         try {
             await createUserProfile({
                 name,
@@ -42,11 +46,14 @@ export default function HealthInputScreen() {
                 conditions,
                 sensitivity_level: conditions.length > 1 ? 'High' : 'Medium'
             });
+            // Small delay to ensure DB write before navigation
+            await new Promise(r => setTimeout(r, 500));
             router.replace('/(tabs)');
         } catch (error) {
             console.error("Failed to create profile", error);
-            // Fallback for demo
             router.replace('/(tabs)');
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -115,7 +122,7 @@ export default function HealthInputScreen() {
             </ScrollView>
 
             <View style={styles.footer}>
-                <GlassButton title="Continue" onPress={handleContinue} />
+                <GlassButton title={loading ? "Saving..." : "Continue"} onPress={handleContinue} />
             </View>
         </View>
     );

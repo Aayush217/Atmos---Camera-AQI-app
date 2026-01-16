@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const axios = require('axios');
 const db = require('./database');
 require('dotenv').config();
 
@@ -74,14 +75,133 @@ app.post('/api/scan', (req, res) => {
     });
 });
 
+// Analyze Image/Location
+app.post('/api/analyze', async (req, res) => {
+    const { latitude, longitude, userId } = req.body;
+
+    if (!latitude || !longitude) {
+        return res.status(400).json({ error: "Latitude and Longitude are required" });
+    }
+
+    try {
+        // 1. Fetch Real AQI from Open-Meteo
+        const meteoUrl = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${latitude}&longitude=${longitude}&current=us_aqi,pm10,pm2_5,nitrogen_dioxide,sulphur_dioxide,ozone&timezone=auto`;
+        const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,relative_humidity_2m,wind_speed_10m`;
+
+        const [aqiResponse, weatherResponse] = await Promise.all([
+            axios.get(meteoUrl),
+            axios.get(weatherUrl)
+        ]);
+
+        const currentAQI = aqiResponse.data.current.us_aqi;
+        const pollutants = {
+            pm10: aqiResponse.data.current.pm10,
+            pm2_5: aqiResponse.data.current.pm2_5,
+            no2: aqiResponse.data.current.nitrogen_dioxide,
+            so2: aqiResponse.data.current.sulphur_dioxide,
+            o3: aqiResponse.data.current.ozone
+        };
+
+        const weather = {
+            temp: weatherResponse.data.current.temperature_2m,
+            hum: weatherResponse.data.current.relative_humidity_2m,
+            wind: weatherResponse.data.current.wind_speed_10m
+        };
+
+        // 2. Get User Profile
+        const targetUserId = userId || 1;
+
+        const getUser = () => new Promise((resolve, reject) => {
+            db.get("SELECT * FROM users WHERE id = ?", [targetUserId], (err, row) => {
+                if (err) reject(err);
+                else resolve(row);
+            });
+        });
+
+        let user = await getUser();
+        let userAge = 25;
+        let userDisease = "None";
+
+        if (user) {
+            userAge = user.age;
+            try {
+                const conds = JSON.parse(user.conditions);
+                if (Array.isArray(conds) && conds.length > 0) {
+                    userDisease = conds.join(", ");
+                }
+            } catch (e) { }
+        }
+
+        // 3. Call Python Service for Advice
+        let advice = "Could not generate advice.";
+        try {
+            const adviceResponse = await axios.post('http://localhost:5000/predict', {
+                aqi: currentAQI,
+                age: userAge,
+                disease: userDisease
+            });
+            advice = adviceResponse.data.advice;
+        } catch (pyError) {
+            console.error("Python Service Error:", pyError.message);
+            advice = "AI Service temporarily unavailable. Please rely on standard health guidelines.";
+        }
+
+        // 4. Construct Response Object
+        const analysisResult = {
+            visual: {
+                aqi: currentAQI,
+                color: getAQIColor(currentAQI),
+                description: getAQIDescription(currentAQI),
+                recommendation: advice
+            },
+            satellite: null,
+            location: { latitude, longitude },
+            weather: weather,
+            components: pollutants,
+            full_advice: advice
+        };
+
+        // 5. Save to DB
+        const sql = `INSERT INTO scans (user_id, aqi, location, ai_analysis) VALUES (?, ?, ?, ?)`;
+        const analysisStr = JSON.stringify(analysisResult);
+        db.run(sql, [targetUserId, currentAQI, JSON.stringify({ latitude, longitude }), analysisStr], (err) => {
+            if (err) console.error("Auto-save failed:", err.message);
+        });
+
+        res.json(analysisResult);
+
+    } catch (error) {
+        console.error("Analysis Error:", error);
+        res.status(500).json({ error: "Failed to analyze location data." });
+    }
+});
+
+function getAQIColor(aqi) {
+    if (aqi <= 50) return "#00E400";
+    if (aqi <= 100) return "#FFFF00";
+    if (aqi <= 150) return "#FF7E00";
+    if (aqi <= 200) return "#FF0000";
+    if (aqi <= 300) return "#99004C";
+    return "#7E0023";
+}
+
+function getAQIDescription(aqi) {
+    if (aqi <= 50) return "Good";
+    if (aqi <= 100) return "Moderate";
+    if (aqi <= 150) return "Unhealthy for Sensitive Groups";
+    if (aqi <= 200) return "Unhealthy";
+    if (aqi <= 300) return "Very Unhealthy";
+    return "Hazardous";
+}
+
 // Get Recent Scans
 app.get('/api/scans', (req, res) => {
     const sql = `SELECT * FROM scans ORDER BY timestamp DESC LIMIT 10`;
     db.all(sql, [], (err, rows) => {
         if (err) return res.status(500).json({ error: err.message });
         rows.forEach(row => {
-            row.ai_analysis = JSON.parse(row.ai_analysis);
-            row.location = JSON.parse(row.location);
+            try { row.ai_analysis = JSON.parse(row.ai_analysis); } catch (e) { }
+            try { row.location = JSON.parse(row.location); } catch (e) { }
         });
         res.json(rows);
     });

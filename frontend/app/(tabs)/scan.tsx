@@ -7,10 +7,8 @@ import { useRouter } from 'expo-router';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
-import { analyzeImage } from '@/services/gemini';
-import { fetchSatelliteAQI } from '@/services/gee';
+import { analyzeImage, saveScan } from '@/services/api';
 import { getCurrentLocation } from '@/services/location';
-import { saveScan } from '@/services/api';
 import { COLORS, RADIUS, SPACING } from '@/constants/theme';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { GlassButton } from '@/components/ui/GlassButton';
@@ -40,48 +38,34 @@ export default function ScanScreen() {
         setCapturedImage(uri);
         try {
             console.log("Starting analysis...");
-            const locationPromise = getCurrentLocation();
-            const visualAnalysisPromise = analyzeImage(base64);
+            const coords = await getCurrentLocation();
 
-            const [coords, visualResult] = await Promise.all([locationPromise, visualAnalysisPromise]);
-            console.log("Analysis Result:", visualResult);
-
-            if (visualResult.aqi === -1) {
-                Alert.alert("Analysis Failed", visualResult.description || "Unknown error");
-                setResult(null);
-                setCapturedImage(null);
+            if (!coords) {
+                Alert.alert("Location Error", "Could not get current location.");
                 setAnalyzing(false);
+                setCapturedImage(null);
                 return;
             }
 
-            // Mock Satellite if GEE not set up
-            let satelliteResult = null;
-            if (coords) {
-                // satelliteResult = await fetchSatelliteAQI(coords.latitude, coords.longitude);
+            console.log("Location fetched:", coords);
+            // Call Backend for Real Analysis + AI Advice
+            const analysisResult = await analyzeImage({
+                latitude: coords.latitude,
+                longitude: coords.longitude,
+                userId: 1 // TODO: Get actual user ID
+            });
+
+            console.log("Analysis Result:", analysisResult);
+
+            if (!analysisResult) {
+                throw new Error("No result from server");
             }
 
-            const scanData = {
-                visual: visualResult,
-                satellite: null,
-                location: coords,
-                weather: { hum: 45, wind: 12, temp: 24 },
-                components: { pm10: visualResult.aqi * 1.2, no2: 15, so2: 5 }
-            };
-
-            setResult(scanData);
-
-            // Save to Backend with better error handling
-            try {
-                await saveScan({
-                    userId: 1,
-                    aqi: visualResult.aqi,
-                    location: coords || {},
-                    ai_analysis: scanData
-                });
-            } catch (saveError) {
-                console.error("Backend Save Error:", saveError);
-                // Don't block UI if save fails
-            }
+            setResult(analysisResult);
+            // Note: Saving is now done automatically by the analyze endpoint (optional), 
+            // or we can rely on this:
+            // But since the backend route I wrote calls save logic, we might not need to call saveScan again unless we want to doubly save or if the backend one was strictly a "get info" and this is "commit".
+            // My implemented backend route /api/analyze DOES save to DB. So no need to call saveScan here.
 
         } catch (error: any) {
             console.error("Analysis failed:", error);

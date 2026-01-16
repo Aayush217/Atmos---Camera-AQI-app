@@ -6,7 +6,7 @@ import { COLORS, SPACING, RADIUS } from '@/constants/theme';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
-import { getUserProfile } from '@/services/api';
+import { getUserProfile, getRecentScans } from '@/services/api';
 import { useFocusEffect } from 'expo-router';
 import { Alert, TouchableOpacity } from 'react-native';
 
@@ -19,6 +19,11 @@ export default function Dashboard() {
     React.useCallback(() => {
       getUserProfile().then(data => {
         if (data) setUser(data);
+      });
+      getRecentScans().then(scans => {
+        if (scans && scans.length > 0) {
+          setLatestScan(scans[0]);
+        }
       });
 
       const hour = new Date().getHours();
@@ -37,9 +42,15 @@ export default function Dashboard() {
   };
 
   // Mock Data for now if no user
+  const [latestScan, setLatestScan] = React.useState<any>(null);
+
   const userName = user?.name || "User";
-  const currentAQI = 42;
-  const aqiStatus = "Good";
+  const currentAQI = latestScan?.aqi || 42;
+  const aqiStatus = latestScan?.ai_analysis?.visual.description || "Good";
+  const aqiColor = latestScan?.ai_analysis?.visual.color || COLORS.success;
+
+  const weather = latestScan?.ai_analysis?.weather || { hum: 45, temp: 24 };
+  const advice = latestScan?.ai_analysis?.visual.recommendation || "Air quality is great today! It's a perfect time for an outdoor jog.";
 
   return (
     <View style={styles.container}>
@@ -71,11 +82,8 @@ export default function Dashboard() {
               <Ionicons name="cloud-outline" size={24} color={COLORS.textLight} />
               <Text style={styles.aqiLabel}>Air Quality Index</Text>
             </View>
-            <Text style={styles.aqiValue}>{currentAQI}</Text>
-            <Text style={styles.aqiStatus}>{aqiStatus}</Text>
-            <View style={styles.progressContainer}>
-              <View style={[styles.progressBar, { width: '42%', backgroundColor: COLORS.success }]} />
-            </View>
+            <Text style={[styles.aqiValue, { color: aqiColor }]}>{currentAQI}</Text>
+            <Text style={[styles.aqiStatus, { color: aqiColor }]}>{aqiStatus}</Text>
           </GlassCard>
         </Animated.View>
 
@@ -87,8 +95,7 @@ export default function Dashboard() {
               <Text style={styles.sectionTitle}>Checkup</Text>
             </View>
             <Text style={styles.insightText}>
-              Air quality is great today! It's a perfect time for an outdoor jog.
-              Your asthma risk is low.
+              {advice}
             </Text>
           </GlassCard>
         </Animated.View>
@@ -99,14 +106,14 @@ export default function Dashboard() {
             <GlassCard style={styles.statCard}>
               <Ionicons name="water-outline" size={24} color="#64b5f6" />
               <Text style={styles.statLabel}>Humidity</Text>
-              <Text style={styles.statValue}>45%</Text>
+              <Text style={styles.statValue}>{weather.hum}%</Text>
             </GlassCard>
           </Animated.View>
           <Animated.View entering={FadeInDown.delay(900)} style={{ flex: 1 }}>
             <GlassCard style={styles.statCard}>
               <Ionicons name="thermometer-outline" size={24} color="#ffb74d" />
               <Text style={styles.statLabel}>Temp</Text>
-              <Text style={styles.statValue}>24°C</Text>
+              <Text style={styles.statValue}>{weather.temp}°C</Text>
             </GlassCard>
           </Animated.View>
         </View>

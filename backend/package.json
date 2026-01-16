@@ -13,9 +13,11 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "axios": "^1.13.2",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
+    "flask-cors": "^0.0.1",
     "nodemon": "^3.1.11",
     "sqlite3": "^5.1.7"
   }
